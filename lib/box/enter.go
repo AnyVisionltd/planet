@@ -19,9 +19,14 @@ package box
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"time"
 
+	"github.com/containerd/console"
 	"github.com/gravitational/trace"
 	"github.com/opencontainers/runc/libcontainer"
 	libcontainerutils "github.com/opencontainers/runc/libcontainer/utils"
@@ -94,8 +99,37 @@ func StartProcessTTY(c libcontainer.Container, cfg ProcessConfig) error {
 
 	// start copying caller's input into container's console:
 	if cfg.In != nil {
-		go io.Copy(containerConsole, cfg.In)
+		go func() {
+			var msg []byte
+			for {
+				_, err := cfg.In.Read(msg)
+				if err != nil {
+					continue
+				}
+				var size []string
+				err = json.Unmarshal(msg, &size)
+				if err == nil {
+					h, _ := strconv.ParseInt(size[0], 0, 16)
+					w, _ := strconv.ParseInt(size[1], 0, 16)
+					containerConsole.Resize(console.WinSize{Height: uint16(h), Width: uint16(w)})
+				} else {
+					containerConsole.Write(msg)
+				}
+			}
+		}()
+		// go io.Copy(containerConsole, cfg.In)
 	}
+
+	go func() {
+		for {
+			select {
+			case <-time.After(2 * time.Second):
+				size, _ := containerConsole.Size()
+				fmt.Fprintf(containerConsole, "size: %v %v\n",
+					size.Height, size.Width)
+			}
+		}
+	}()
 
 	// wait for the process to finish.
 	_, err = p.Wait()

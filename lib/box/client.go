@@ -26,12 +26,16 @@ package box
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
+	"github.com/docker/docker/pkg/term"
 	"github.com/gravitational/trace"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/websocket"
@@ -97,6 +101,16 @@ func (c *client) Enter(cfg ProcessConfig) error {
 			}
 		}()
 	}
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	go func() {
+		for range ch {
+			size, _ := term.GetWinsize(os.Stdin.Fd())
+			websocket.JSON.Send(clt, []string{
+				fmt.Sprintf("%v", size.Height), fmt.Sprintf("%v", size.Width)})
+		}
+	}()
 
 	// only wait for output handle to be closed
 	err = <-exitC

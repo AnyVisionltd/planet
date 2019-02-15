@@ -18,7 +18,10 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/docker/docker/pkg/term"
 	"github.com/gravitational/planet/lib/box"
@@ -83,7 +86,14 @@ func enter(rootfs, socketPath string, cfg *box.ProcessConfig) error {
 	if err != nil {
 		return err
 	}
-
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	go func() {
+		for range ch {
+			size, _ := term.GetWinsize(os.Stdin.Fd())
+			fmt.Printf("Received SIGWINCH signal: height: %v width: %v\n.", size.Height, size.Width)
+		}
+	}()
 	return s.Enter(*cfg)
 }
 
