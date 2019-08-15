@@ -542,6 +542,7 @@ var KubeletVersion = schema.GroupVersionKind{
 
 var allCaps = []string{
 	"CAP_AUDIT_CONTROL",
+	"CAP_AUDIT_READ",
 	"CAP_AUDIT_WRITE",
 	"CAP_BLOCK_SUSPEND",
 	"CAP_CHOWN",
