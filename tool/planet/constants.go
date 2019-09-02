@@ -18,10 +18,12 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gravitational/planet/lib/utils"
 
+	"github.com/syndtr/gocapability/capability"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
@@ -64,14 +66,14 @@ const (
 	// EnvAPIServerName names the environment variable that specifies
 	// the address of the API server
 	EnvAPIServerName = "KUBE_APISERVER"
-	// See https://coreos.com/etcd/docs/latest/v2/configuration.html
 	// EnvEtcdProxy names the environment variable that specifies
 	// the value of the proxy mode setting
+	// See https://coreos.com/etcd/docs/latest/v2/configuration.html
 	EnvEtcdProxy = "PLANET_ETCD_PROXY"
 	// EnvEtcdMemberName names the environment variable that specifies
 	// the name of this node in the etcd cluster
 	EnvEtcdMemberName = "PLANET_ETCD_MEMBER_NAME"
-	// EnvEtcdInitialClusterState names the environment variable that specifies
+	// EnvEtcdInitialCluster names the environment variable that specifies
 	// the initial etcd cluster configuration for bootstrapping
 	EnvEtcdInitialCluster = "ETCD_INITIAL_CLUSTER"
 	// EnvEtcdGatewayEndpoints is a list of endpoints the etcd gateway can use
@@ -191,7 +193,7 @@ const (
 	// EnvDockerPromiscuousMode names the environment variable that specifies the
 	// promiscuous mode for docker
 	EnvDockerPromiscuousMode = "PLANET_DOCKER_PROMISCUOUS_MODE"
-	// EnvServiceGID names the environment variable that specifies the service user ID
+	// EnvServiceUID names the environment variable that specifies the service user ID
 	EnvServiceUID = "PLANET_SERVICE_UID"
 	// EnvServiceGID names the environment variable that specifies the service group ID
 	EnvServiceGID = "PLANET_SERVICE_GID"
@@ -303,10 +305,9 @@ const (
 	// This is kept for backwards-compatibility
 	LegacyAPIServerDNSName = "apiserver"
 
-	// See resolv.conf(5) on a Linux machine
-	//
 	// DNSNdots defines the threshold for amount of dots that must appear in a name
 	// before an initial absolute query will be made
+	// See resolv.conf(5) on a Linux machine
 	DNSNdots = 2
 	// DNSTimeout is the amount time resolver will wait for response before retrying
 	// the query with a different name server. Measured in seconds
@@ -321,7 +322,7 @@ const (
 	// PlanetAgentServiceName is the name of the planet agent
 	PlanetAgentServiceName = "planet-agent.service"
 
-	// ETCDDropinPath is the location of the systemd dropin when etcd is in gateway mode
+	// ETCDGatewayDropinPath is the location of the systemd dropin when etcd is in gateway mode
 	ETCDGatewayDropinPath = "/etc/systemd/system/etcd.service.d/10-gateway.conf"
 
 	// PlanetResolv is planet local resolver
@@ -423,6 +424,9 @@ const (
 
 	// ETCDRegistryPrefix is the etcd directory for the k8s api server data in etcd
 	ETCDRegistryPrefix = "/registry"
+
+	// ETCDBackupPrefix is the default etcd backup prefix
+	ETCDBackupPrefix = "/"
 
 	// WaitInterval is the amount of time to sleep between loops
 	WaitInterval = 100 * time.Millisecond
@@ -540,42 +544,21 @@ var KubeletVersion = schema.GroupVersionKind{
 	Kind:    "KubeletConfiguration",
 }
 
-var allCaps = []string{
-	"CAP_AUDIT_CONTROL",
-	"CAP_AUDIT_WRITE",
-	"CAP_BLOCK_SUSPEND",
-	"CAP_CHOWN",
-	"CAP_DAC_OVERRIDE",
-	"CAP_DAC_READ_SEARCH",
-	"CAP_FOWNER",
-	"CAP_FSETID",
-	"CAP_IPC_LOCK",
-	"CAP_IPC_OWNER",
-	"CAP_KILL",
-	"CAP_LEASE",
-	"CAP_LINUX_IMMUTABLE",
-	"CAP_MAC_ADMIN",
-	"CAP_MAC_OVERRIDE",
-	"CAP_MKNOD",
-	"CAP_NET_ADMIN",
-	"CAP_NET_BIND_SERVICE",
-	"CAP_NET_BROADCAST",
-	"CAP_NET_RAW",
-	"CAP_SETGID",
-	"CAP_SETFCAP",
-	"CAP_SETPCAP",
-	"CAP_SETUID",
-	"CAP_SYS_ADMIN",
-	"CAP_SYS_BOOT",
-	"CAP_SYS_CHROOT",
-	"CAP_SYS_MODULE",
-	"CAP_SYS_NICE",
-	"CAP_SYS_PACCT",
-	"CAP_SYS_PTRACE",
-	"CAP_SYS_RAWIO",
-	"CAP_SYS_RESOURCE",
-	"CAP_SYS_TIME",
-	"CAP_SYS_TTY_CONFIG",
-	"CAP_SYSLOG",
-	"CAP_WAKE_ALARM",
+var allCaps = []string{}
+
+// Based on runc capabilities detection
+// https://github.com/opencontainers/runc/blob/2e94378464ae22b92e1335c200edb37ebc94a1b7/libcontainer/capabilities_linux.go#L17-L31
+func init() {
+	last := capability.CAP_LAST_CAP
+	// workaround for RHEL6 which has no /proc/sys/kernel/cap_last_cap
+	if last == capability.Cap(63) {
+		last = capability.CAP_BLOCK_SUSPEND
+	}
+	for _, cap := range capability.List() {
+		if cap > last {
+			continue
+		}
+		capKey := fmt.Sprintf("CAP_%s", strings.ToUpper(cap.String()))
+		allCaps = append(allCaps, capKey)
+	}
 }
